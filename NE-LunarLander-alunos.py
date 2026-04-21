@@ -68,13 +68,28 @@ def check_successful_landing(observation):
     return False
 
 def objective_function(observation_history):
-    #TODO: Implement your own objective function
-    #Computes the quality of the individual based 
-    #on the horizontal distance to the landing pad, the vertical velocity and the angle
-    second_to_last_observation = observation_history[-2]
-    x = second_to_last_observation[0]
-    y = second_to_last_observation[1]
-    return -abs(x) - abs(y), check_successful_landing(observation_history[-1])
+    obs = observation_history[-2]
+    
+    x = obs[0]          # Posição horizontal
+    y = obs[1]          # Posição vertical
+    vx = obs[2]         # Velocidade horizontal
+    vy = obs[3]         # Velocidade vertical
+    theta = obs[4]      # Orientação (ângulo)
+    leg_l = obs[6]      # Contacto da perna esquerda
+    leg_r = obs[7]      # Contacto da perna direita
+
+    # Penalizações (queremos minimizar a distância, a velocidade de queda e a inclinação)
+    fitness = - (abs(x) * 10.0) - (abs(y) * 10.0) - (abs(vy) * 50.0) - (abs(theta) * 20.0)
+    
+    # Recompensas
+    fitness += (leg_l + leg_r) * 10.0
+
+    # Bónus massivo por sucesso total
+    success = check_successful_landing(observation_history[-1])
+    if success:
+        fitness += 1000.0
+
+    return fitness, success
 
 def simulate(genotype, render_mode = None, seed=None, env = None):
     #Simulates an episode of Lunar Lander, evaluating an individual
@@ -146,19 +161,28 @@ def generate_initial_population():
     return population
 
 def parent_selection(population):
-    #TODO
-    #Select an individual from the population
-    return copy.deepcopy(random.choice(population))
+    # Seleção por Torneio (tamanho 3)
+    tournament = random.sample(population, 3)
+    winner = max(tournament, key=lambda ind: ind['fitness'])
+    return copy.deepcopy(winner)
 
 def crossover(p1, p2):
-    #TODO
-    #Create an offspring from the individuals p1 and p2
-    return p1
+    # Crossover Uniforme
+    child_genotype = []
+    for i in range(GENOTYPE_SIZE):
+        if random.random() < 0.5:
+            child_genotype.append(p1['genotype'][i])
+        else:
+            child_genotype.append(p2['genotype'][i])
+    return {'genotype': child_genotype, 'fitness': None}
 
 def mutation(p):
-    #TODO
-    #Mutate the individual p
-    return p    
+    # Mutação Gaussiana
+    for i in range(GENOTYPE_SIZE):
+        if random.random() < PROB_MUTATION:
+            p['genotype'][i] += random.gauss(0, STD_DEV)
+            p['genotype'][i] = max(-1.0, min(1.0, p['genotype'][i]))
+    return p  
     
 def survival_selection(population, offspring):
     #reevaluation of the elite
@@ -233,12 +257,12 @@ if __name__ == '__main__':
 
     #Pick a setting from below
     #--to evolve the controller--    
-    evolve = True
-    render_mode = None
+    #evolve = True
+    #render_mode = None
 
     #--to test the evolved controller without visualisation--
-    #evolve = False
-    #render_mode = None
+    evolve = False
+    render_mode = None
 
     #--to test the evolved controller with visualisation--
     #evolve = False
@@ -246,21 +270,51 @@ if __name__ == '__main__':
     
     
     if evolve:
-        #evolve individuals
-        n_runs = 5
-        seeds = [964, 952, 364, 913, 140, 726, 112, 631, 881, 844, 965, 672, 335, 611, 457, 591, 551, 538, 673, 437, 513, 893, 709, 489, 788, 709, 751, 467, 596, 976]
-        for i in range(n_runs):    
-            random.seed(seeds[i])
-            bests = evolution()
-            with open(f'log{i}.txt', 'w') as f:
-                for b in bests:
-                    f.write(f'{b[1]}\t{SHAPE}\t{b[0]}\n')
+        # Definição das 8 experiências da Tabela 2 
+        experiencias = [
+            {'id': 1, 'mut': 0.008, 'cross': 0.5, 'elite': 0},
+            {'id': 2, 'mut': 0.05,  'cross': 0.5, 'elite': 0},
+            {'id': 3, 'mut': 0.008, 'cross': 0.9, 'elite': 0},
+            {'id': 4, 'mut': 0.05,  'cross': 0.9, 'elite': 0},
+            {'id': 5, 'mut': 0.008, 'cross': 0.5, 'elite': 1},
+            {'id': 6, 'mut': 0.05,  'cross': 0.5, 'elite': 1},
+            {'id': 7, 'mut': 0.008, 'cross': 0.9, 'elite': 1},
+            {'id': 8, 'mut': 0.05,  'cross': 0.9, 'elite': 1},
+        ]
+        
+        n_runs = 5 # 5 repetições para significado estatístico [cite: 295, 309]
+        seeds = [964, 952, 364, 913, 140] # Usamos 5 seeds fixas para consistência [cite: 307]
+        
+        # Iterar sobre cada experiência da Tabela 2
+        for exp in experiencias:
+            print(f"\n{'='*40}")
+            print(f"A INICIAR EXPERIÊNCIA {exp['id']}")
+            print(f"Mutação: {exp['mut']} | Crossover: {exp['cross']} | Elitismo: {exp['elite']}")
+            print(f"{'='*40}\n")
+            
+            # Atualizar as variáveis globais
+            PROB_MUTATION = exp['mut']
+            PROB_CROSSOVER = exp['cross']
+            ELITE_SIZE = exp['elite']
+            
+            # Correr as 5 repetições 
+            for run in range(n_runs):
+                print(f"  -> A executar repetição {run+1}/5 (Seed: {seeds[run]})")
+                random.seed(seeds[run])
+                bests = evolution()
+                
+                # Guardar os resultados com um nome de ficheiro organizado [cite: 300, 301]
+                # Exemplo: log_exp1_run0.txt
+                nome_ficheiro = f"log_exp{exp['id']}_run{run}.txt"
+                with open(nome_ficheiro, 'w') as f:
+                    for b in bests:
+                        f.write(f'{b[1]}\t{SHAPE}\t{b[0]}\n')
 
                 
     else:
         #test evolved individuals
         #pick the file to test
-        filename = 'log0.txt'
+        filename = 'log_exp1_run0.txt'
         bests = load_bests(filename)
         b = bests[-1]
         SHAPE = b[1]
