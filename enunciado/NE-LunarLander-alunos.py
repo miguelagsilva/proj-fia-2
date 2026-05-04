@@ -68,30 +68,13 @@ def check_successful_landing(observation):
     return False
 
 def objective_function(observation_history):
+    #TODO: Implement your own objective function
     #Computes the quality of the individual based 
     #on the horizontal distance to the landing pad, the vertical velocity and the angle
-    obs = observation_history[-2]
-    
-    x = obs[0]          # Posição horizontal
-    y = obs[1]          # Posição vertical
-    vx = obs[2]         # Velocidade horizontal
-    vy = obs[3]         # Velocidade vertical
-    theta = obs[4]      # Orientação (ângulo)
-    leg_l = obs[6]      # Contacto da perna esquerda
-    leg_r = obs[7]      # Contacto da perna direita
-
-    # Penalizações (queremos minimizar a distância, a velocidade de queda e a inclinação)
-    fitness = - (abs(x) * 10.0) - (abs(y) * 10.0) - (abs(vy) * 50.0) - (abs(theta) * 20.0)
-    
-    # Recompensas
-    fitness += (leg_l + leg_r) * 10.0
-
-    # Bónus grande em caso de sucesso
-    success = check_successful_landing(observation_history[-2])
-    if success:
-        fitness += 1000.0
-
-    return rating, success
+    second_to_last_observation = observation_history[-2]
+    x = second_to_last_observation[0]
+    y = second_to_last_observation[1]
+    return -abs(x) - abs(y), check_successful_landing(observation_history[-2])
 
 def simulate(genotype, render_mode = None, seed=None, env = None):
     #Simulates an episode of Lunar Lander, evaluating an individual
